@@ -48,3 +48,19 @@ export const FAN_OUT = 0.9;
 /** A defender with the ball this far past him gives up the line and chases. */
 export const BEATEN_MARGIN = 1.0;
 export const CHASE_SPEED = 5.9;
+
+/** Passing (3d6 at release). Total + modifiers at or below these is a missed / poor pass. */
+export const PASS_MISSED_MAX = 4;
+export const PASS_POOR_MAX = 7;
+/** Passer has a defender this close when he lets it go: hurried pass. */
+export const HURRIED_DIST = 2.2;
+/** Catching (3d6 at arrival): dropped if total is at or below CATCH_FAIL_BASE + penalties. */
+export const CATCH_FAIL_BASE = 4;
+/** Receiver has a defender this close as the ball arrives: catching under pressure. */
+export const PRESSURE_DIST = 2.5;
+/** A defender this close to the ball in flight gets a chance to intercept. */
+export const INTERCEPT_R = 1.1;
+/** 3d6 needed to pick off a pass. */
+export const INTERCEPT_NEED = 14;
+/** The receiver counts as in front of the passer (forward pass) beyond this. */
+export const AHEAD_TOLERANCE = 0.3;

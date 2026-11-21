@@ -1,6 +1,6 @@
 import * as C from './constants';
 import { Rng } from './rng';
-import type { DrillState, Player, SimEvent } from './types';
+import type { DrillOptions, DrillState, Player, SimEvent } from './types';
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -28,16 +28,17 @@ function makePlayers(rng: Rng): Player[] {
 }
 
 /** Create a fresh drill. The ball starts with the middle attacker. */
-export function createDrill(seed: number): DrillState {
+export function createDrill(seed: number, options: Partial<DrillOptions> = {}): DrillState {
   const rng = new Rng(seed);
   const state: DrillState = {
     time: 0, seed, resets: 0, phase: 'live', resetIn: 0, playTime: 0,
     players: makePlayers(rng),
     ball: { x: laneX(2), y: C.ATT_START_Y, carrierId: 2, flight: null },
-    stats: { tries: 0, tackled: 0, forwardPasses: 0, streak: 0 },
+    stats: { tries: 0, tackled: 0, forwardPasses: 0, handlingErrors: 0, streak: 0 },
     events: [],
     lineY: C.DEF_START_Y,
     rng,
+    options: { handlingDice: true, ...options },
   };
   return state;
 }
@@ -92,18 +93,57 @@ export function requestPassTo(s: DrillState, toLane: number): boolean {
   if (toLane < 0 || toLane >= C.LANES || toLane === from.lane) return false;
   const to = s.players[toLane]!;
   const sample = ballDur(from, to);
-  // Forward is judged in the passer's frame: where the receiver catches it compared
-  // with where the passer's hands will be by then (both are running up the pitch).
+  // Forward if the receiver is in front of the passer as it is thrown, or if the
+  // ball goes forward out of the passer's hands (judged in his running frame).
   const catchY = to.y + to.vy * sample;
   const handsY = from.y + from.vy * sample;
-  const forward = catchY > handsY + C.FORWARD_TOLERANCE;
+  const forward = to.y > from.y + C.AHEAD_TOLERANCE || catchY > handsY + C.FORWARD_TOLERANCE;
+
+  // Quality of the pass: 3d6, worse when hurried or skipping team-mates.
+  const skipped = Math.abs(toLane - from.lane) - 1;
+  const nearest = nearestDefender(s, from.x, from.y);
+  const hurried = nearest < C.HURRIED_DIST;
+  const dice = s.rng.roll3d6();
+  const total = dice[0] + dice[1] + dice[2];
+  const score = total - skipped - (hurried ? 2 : 0);
+  const quality = !s.options.handlingDice ? 'good' : score <= C.PASS_MISSED_MAX ? 'missed' : score <= C.PASS_POOR_MAX ? 'poor' : 'good';
+
+  let landX: number | null = null;
+  let landY: number | null = null;
+  if (quality === 'missed') {
+    // Behind and short of the receiver, onto the floor.
+    landX = from.x + (to.x + to.vx * sample - from.x) * 0.75;
+    landY = to.y + to.vy * sample - 2.5;
+  }
+
   s.ball.flight = {
     passerId: from.id, receiverId: to.id, fromX: from.x, fromY: from.y,
-    t: 0, dur: sample, forward,
+    t: 0, dur: sample, forward, quality,
+    catchPenalty: skipped + (quality === 'poor' ? 2 : 0) + (hurried ? 1 : 0),
+    landX, landY, interceptTried: [],
   };
   s.ball.carrierId = null;
-  emit(s, { type: 'pass', from: from.id, to: to.id, forward });
+  emit(s, { type: 'pass', from: from.id, to: to.id, forward, dice, total, quality });
   return true;
+}
+
+function nearestDefender(s: DrillState, x: number, y: number): number {
+  let best = Infinity;
+  for (const d of s.players) {
+    if (d.team !== 'def' || d.state === 'beaten' || d.state === 'down') continue;
+    best = Math.min(best, Math.hypot(d.x - x, d.y - y));
+  }
+  return best;
+}
+
+function stopPlay(s: DrillState, phase: DrillState['phase']) {
+  s.phase = phase;
+  s.resetIn = C.RESET_DELAY;
+  s.stats.streak = 0;
+  for (const p of s.players) {
+    p.vx = 0;
+    p.vy = 0;
+  }
 }
 
 function ballDur(a: Player, b: Player): number {
@@ -226,18 +266,60 @@ function stepBall(s: DrillState, dt: number) {
     f.t += dt;
     const recv = s.players[f.receiverId]!;
     const k = clamp(f.t / f.dur, 0, 1);
-    b.x = f.fromX + (recv.x - f.fromX) * k;
-    b.y = f.fromY + (recv.y - f.fromY) * k;
+    const tx = f.landX ?? recv.x;
+    const ty = f.landY ?? recv.y;
+    b.x = f.fromX + (tx - f.fromX) * k;
+    b.y = f.fromY + (ty - f.fromY) * k;
+
+    // Defenders near the ball get one go each at picking it off.
+    for (const d of s.options.handlingDice ? s.players : []) {
+      if (d.team !== 'def' || d.state === 'beaten' || d.state === 'down') continue;
+      if (f.interceptTried.includes(d.id)) continue;
+      if (Math.hypot(d.x - b.x, d.y - b.y) > C.INTERCEPT_R) continue;
+      f.interceptTried.push(d.id);
+      const dice = s.rng.roll3d6();
+      const total = dice[0] + dice[1] + dice[2];
+      const made = total >= C.INTERCEPT_NEED;
+      emit(s, { type: 'intercept', dice, total, need: C.INTERCEPT_NEED, made, defenderId: d.id });
+      if (made) {
+        b.flight = null;
+        b.x = d.x;
+        b.y = d.y;
+        s.stats.handlingErrors++;
+        stopPlay(s, 'intercept');
+        return;
+      }
+    }
+
     if (f.t >= f.dur) {
       b.flight = null;
       if (f.forward) {
-        s.phase = 'forward';
-        s.resetIn = C.RESET_DELAY;
         s.stats.forwardPasses++;
-        s.stats.streak = 0;
+        stopPlay(s, 'forward');
         emit(s, { type: 'forward-pass' });
-      } else {
+        return;
+      }
+      if (f.quality === 'missed') {
+        s.stats.handlingErrors++;
+        stopPlay(s, 'loose');
+        emit(s, { type: 'loose' });
+        return;
+      }
+      // Catch: 3d6, harder under pressure, off a poor pass or a skip.
+      const pressure = nearestDefender(s, recv.x, recv.y) < C.PRESSURE_DIST ? 2 : 0;
+      const need = C.CATCH_FAIL_BASE + f.catchPenalty + pressure + 1;
+      const dice = s.rng.roll3d6();
+      const total = dice[0] + dice[1] + dice[2];
+      const made = !s.options.handlingDice || total >= need;
+      emit(s, { type: 'catch', dice, total, need, made });
+      if (made) {
         b.carrierId = recv.id;
+      } else {
+        // Knocked on: ball goes forward off the hands.
+        b.y = recv.y + 1.5;
+        b.x = recv.x;
+        s.stats.handlingErrors++;
+        stopPlay(s, 'knock-on');
       }
     }
   } else if (b.carrierId !== null) {
@@ -261,16 +343,10 @@ function checkTackles(s: DrillState) {
     const made = total + frontOn >= C.TACKLE_TARGET;
     emit(s, { type: 'tackle', dice, total, made, tacklerId: d.id });
     if (made) {
-      s.phase = 'tackled';
-      s.resetIn = C.RESET_DELAY;
       s.stats.tackled++;
-      s.stats.streak = 0;
+      stopPlay(s, 'tackled');
       holder.state = 'down';
       d.state = 'down';
-      for (const p of s.players) {
-        p.vx = 0;
-        p.vy = 0;
-      }
     } else {
       d.state = 'beaten';
       d.timer = C.BEATEN_TIME;
@@ -293,9 +369,7 @@ function checkScoring(s: DrillState) {
       p.vy = 0;
     }
   } else if (holder.x < 0 || holder.x > C.PITCH_W) {
-    s.phase = 'touch';
-    s.resetIn = C.RESET_DELAY;
-    s.stats.streak = 0;
+    stopPlay(s, 'touch');
     emit(s, { type: 'touch' });
   }
 }

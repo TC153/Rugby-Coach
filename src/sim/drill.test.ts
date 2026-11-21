@@ -51,7 +51,7 @@ describe('drill setup', () => {
 
 describe('passing', () => {
   it('moves the ball to the neighbouring attacker', () => {
-    const s = createDrill(1);
+    const s = createDrill(1, { handlingDice: false });
     for (let i = 0; i < 30; i++) stepDrill(s, DT);
     expect(requestPass(s, 1)).toBe(true);
     expect(s.ball.carrierId).toBeNull();
@@ -59,7 +59,7 @@ describe('passing', () => {
     expect(carrier(s)?.lane).toBe(3);
   });
   it('cannot pass past the end of the line', () => {
-    const s = createDrill(1);
+    const s = createDrill(1, { handlingDice: false });
     for (let i = 0; i < 20; i++) stepDrill(s, DT);
     requestPass(s, 1);
     for (let i = 0; i < 30; i++) stepDrill(s, DT);
@@ -83,7 +83,7 @@ describe('passing', () => {
     expect(s.stats.forwardPasses).toBe(1);
   });
   it('a normal pass behind the passer is not forward', () => {
-    const s = createDrill(3);
+    const s = createDrill(3, { handlingDice: false });
     for (let i = 0; i < 30; i++) stepDrill(s, DT);
     requestPass(s, -1);
     for (let i = 0; i < 40; i++) stepDrill(s, DT);
@@ -94,7 +94,7 @@ describe('passing', () => {
 
 describe('skip pass', () => {
   it('goes over a team-mate to the attacker two lanes away', () => {
-    const s = createDrill(1);
+    const s = createDrill(1, { handlingDice: false });
     for (let i = 0; i < 30; i++) stepDrill(s, DT);
     expect(requestPassTo(s, 4)).toBe(true);
     for (let i = 0; i < 60; i++) stepDrill(s, DT);
@@ -112,6 +112,76 @@ describe('skip pass', () => {
     const s = createDrill(1);
     expect(requestPassTo(s, 2)).toBe(false);
     expect(requestPassTo(s, 5)).toBe(false);
+  });
+});
+
+describe('forward pass', () => {
+  it('a pass to a receiver standing in front of the passer is forward even if he is slower', () => {
+    const s = createDrill(3, { handlingDice: false });
+    for (let i = 0; i < 30; i++) stepDrill(s, DT);
+    const r = s.players[3]!;
+    r.y = s.players[2]!.y + 1;
+    r.vy = 2;
+    requestPassTo(s, 3);
+    for (let i = 0; i < 60 && s.phase === 'live'; i++) stepDrill(s, DT);
+    expect(s.phase).toBe('forward');
+  });
+});
+
+describe('handling dice', () => {
+  /** Run many passes and count each outcome. */
+  function outcomes(pass: (s: DrillState) => void, seeds = 400) {
+    const out: Record<string, number> = {};
+    for (let seed = 1; seed <= seeds; seed++) {
+      const s = createDrill(seed);
+      for (let i = 0; i < 20; i++) stepDrill(s, DT);
+      pass(s);
+      for (let i = 0; i < 90 && s.phase === 'live' && !carrier(s); i++) stepDrill(s, DT);
+      const k = s.phase === 'live' ? 'caught' : s.phase;
+      out[k] = (out[k] ?? 0) + 1;
+    }
+    return out;
+  }
+
+  it('most simple passes are caught, a few are dropped or missed', () => {
+    const o = outcomes((s) => requestPassTo(s, 3));
+    expect(o.caught!).toBeGreaterThan(360);
+    expect((o['knock-on'] ?? 0) + (o.loose ?? 0)).toBeGreaterThan(0);
+  });
+
+  it('skip passes go wrong more often than short passes', () => {
+    const short = outcomes((s) => requestPassTo(s, 3));
+    const skip = outcomes((s) => requestPassTo(s, 4));
+    expect(skip.caught!).toBeLessThan(short.caught!);
+  });
+
+  it('every pass and catch shows its dice', () => {
+    const s = createDrill(9);
+    requestPassTo(s, 1);
+    for (let i = 0; i < 60; i++) stepDrill(s, DT);
+    const ev = drainEvents(s);
+    const pass = ev.find((e) => e.type === 'pass');
+    expect(pass && 'dice' in pass && pass.dice).toHaveLength(3);
+  });
+
+  it('a defender standing in the passing lane can intercept', () => {
+    let picked = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      const s = createDrill(seed);
+      for (let i = 0; i < 20; i++) stepDrill(s, DT);
+      // Put a defender right between passer and receiver.
+      const a = s.players[2]!;
+      const b = s.players[4]!;
+      const d = s.players[5]!;
+      d.x = (a.x + b.x) / 2;
+      d.y = (a.y + b.y) / 2;
+      requestPassTo(s, 4);
+      for (let i = 0; i < 90 && s.phase === 'live' && !carrier(s); i++) stepDrill(s, DT);
+      if (s.phase === 'intercept') picked++;
+    }
+    // 3d6 >= 14 is about 16% per try; the defender drifts, so fewer land.
+    expect(picked).toBeGreaterThan(6);
+    expect(picked).toBeLessThan(60);
   });
 });
 

@@ -47,7 +47,18 @@ function showError(msg: string) {
 window.addEventListener('error', (e) => showError(e.message));
 window.addEventListener('unhandledrejection', (e) => showError(String(e.reason)));
 
-bindInput(canvas.parentElement!, {
+// Version label and a reload button that skips the browser cache.
+declare const __BUILD__: string;
+document.getElementById('version')!.textContent = __BUILD__;
+const reloadBtn = document.getElementById('reload')!;
+reloadBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+reloadBtn.addEventListener('click', () => {
+  const url = new URL(location.href);
+  url.searchParams.set('v', String(Date.now()));
+  location.replace(url.toString());
+});
+
+bindInput(canvas, {
   onTap(x) {
     const c = carrier(state);
     if (!c || !view) return;
