@@ -13,13 +13,21 @@ const params = new URLSearchParams(location.search);
 const seed = Number(params.get('seed')) || (Date.now() & 0xffffff);
 const state = createDrill(seed);
 
-let view: View;
+let view: View | undefined;
 let camX = PITCH_W / 2;
 
+let sizeKey = '';
+
+/** Re-measure the canvas. Called every frame because some phone browsers report
+ *  a zero or stale window size at load and never fire a resize event. */
 function resize() {
+  const host = canvas.parentElement!;
+  const w = host.clientWidth || window.innerWidth;
+  const h = host.clientHeight || window.innerHeight;
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  const key = `${w}x${h}@${dpr}`;
+  if (!w || !h || key === sizeKey) return;
+  sizeKey = key;
   canvas.width = Math.round(w * dpr);
   canvas.height = Math.round(h * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -27,7 +35,15 @@ function resize() {
   view.camX = camX;
 }
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', resize);
 resize();
+
+function showError(msg: string) {
+  const hint = document.getElementById('hint');
+  if (hint) hint.textContent = `Error: ${msg}`;
+}
+window.addEventListener('error', (e) => showError(e.message));
+window.addEventListener('unhandledrejection', (e) => showError(String(e.reason)));
 
 bindInput(canvas.parentElement!, (dir) => {
   requestPass(state, dir);
@@ -39,6 +55,11 @@ let last = performance.now();
 const paused = params.has('freeze');
 
 function frame(nowMs: number) {
+  resize();
+  if (!view) {
+    requestAnimationFrame(frame);
+    return;
+  }
   const dt = Math.min(0.1, (nowMs - last) / 1000);
   last = nowMs;
   if (!paused) {
