@@ -88,23 +88,26 @@ function drawPassLine(ctx: CanvasRenderingContext2D, v: View, s: DrillState) {
   // Highlight the links the carrier can pass along.
   const holder = carrier(s);
   if (!holder || s.ball.flight || s.phase !== 'live') return;
-  for (const dir of [-1, 1]) {
-    const lane = holder.lane + dir;
-    if (lane < 0 || lane >= C.LANES) continue;
+  for (let lane = 0; lane < C.LANES; lane++) {
+    if (lane === holder.lane) continue;
+    const skip = Math.abs(lane - holder.lane) > 1;
     const a = pts[holder.lane]!;
     const b = pts[lane]!;
-    ctx.strokeStyle = '#ffe36b';
-    ctx.lineWidth = 3.5;
+    const col = skip ? 'rgba(255,227,107,0.55)' : '#ffe36b';
+    ctx.strokeStyle = col;
+    ctx.lineWidth = skip ? 2.5 : 3.5;
+    ctx.setLineDash(skip ? [3, 6] : []);
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
     ctx.stroke();
+    ctx.setLineDash([]);
     // Arrow head at the receiver end.
     const ang = Math.atan2(b.y - a.y, b.x - a.x);
     const r = atts[lane]!;
-    const rr = C.PLAYER_R * v.scale * depthScale(r.y) + 6;
+    const rr = C.PLAYER_R * 1.2 * v.scale * depthScale(r.y) + 6;
     const tip = { x: b.x - Math.cos(ang) * rr, y: b.y - Math.sin(ang) * rr };
-    ctx.fillStyle = '#ffe36b';
+    ctx.fillStyle = col;
     ctx.beginPath();
     ctx.moveTo(tip.x, tip.y);
     ctx.lineTo(tip.x - Math.cos(ang - 0.45) * 12, tip.y - Math.sin(ang - 0.45) * 12);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as C from './constants';
-import { carrier, createDrill, drainEvents, requestPass, stepDrill } from './drill';
+import { carrier, createDrill, drainEvents, requestPass, requestPassTo, stepDrill } from './drill';
 import { Rng } from './rng';
 import type { DrillState } from './types';
 
@@ -92,7 +92,42 @@ describe('passing', () => {
   });
 });
 
+describe('skip pass', () => {
+  it('goes over a team-mate to the attacker two lanes away', () => {
+    const s = createDrill(1);
+    for (let i = 0; i < 30; i++) stepDrill(s, DT);
+    expect(requestPassTo(s, 4)).toBe(true);
+    for (let i = 0; i < 60; i++) stepDrill(s, DT);
+    expect(carrier(s)?.lane).toBe(4);
+    expect(s.stats.forwardPasses).toBe(0);
+  });
+  it('takes longer in the air than a short pass', () => {
+    const a = createDrill(1);
+    const b = createDrill(1);
+    requestPassTo(a, 3);
+    requestPassTo(b, 4);
+    expect(b.ball.flight!.dur).toBeGreaterThan(a.ball.flight!.dur);
+  });
+  it('rejects passing to yourself or off the end', () => {
+    const s = createDrill(1);
+    expect(requestPassTo(s, 2)).toBe(false);
+    expect(requestPassTo(s, 5)).toBe(false);
+  });
+});
+
 describe('defence', () => {
+  it('defenders turn and chase once the carrier is through the line', () => {
+    const s = createDrill(4);
+    for (let i = 0; i < 10; i++) stepDrill(s, DT);
+    // Put the carrier clean through, behind every defender.
+    const c = carrier(s)!;
+    c.y = 40;
+    c.x = 35;
+    for (let i = 0; i < 30; i++) stepDrill(s, DT);
+    const defs = s.players.filter((p) => p.team === 'def');
+    expect(defs.every((d) => d.vy > 1)).toBe(true);
+  });
+
   it('tackles a carrier who never passes, and shows the dice', () => {
     let tackled = 0;
     let tries = 0;

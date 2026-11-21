@@ -44,3 +44,7 @@ export const PLAYER_R = 0.9;
 
 /** Lateral drift (m/s) per lane away from the middle lane. */
 export const FAN_OUT = 0.9;
+
+/** A defender with the ball this far past him gives up the line and chases. */
+export const BEATEN_MARGIN = 1.0;
+export const CHASE_SPEED = 5.9;

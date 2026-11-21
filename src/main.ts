@@ -1,6 +1,8 @@
 import { makeView, PITCH_W, type View } from './render/camera';
 import { drawDrill } from './render/draw';
-import { createDrill, drainEvents, requestPass, stepDrill } from './sim/drill';
+import { carrier, createDrill, drainEvents, requestPass, requestPassTo, stepDrill } from './sim/drill';
+import { project } from './render/camera';
+import { pickTarget } from './ui/pick';
 import { Hud } from './ui/hud';
 import { bindInput } from './ui/input';
 
@@ -45,8 +47,17 @@ function showError(msg: string) {
 window.addEventListener('error', (e) => showError(e.message));
 window.addEventListener('unhandledrejection', (e) => showError(String(e.reason)));
 
-bindInput(canvas.parentElement!, (dir) => {
-  requestPass(state, dir);
+bindInput(canvas.parentElement!, {
+  onTap(x) {
+    const c = carrier(state);
+    if (!c || !view) return;
+    const xs = state.players.filter((p) => p.team === 'att').map((p) => project(view!, p.x, p.y).x);
+    requestPassTo(state, pickTarget(xs, c.lane, x));
+  },
+  onKey(dir, steps) {
+    const c = carrier(state);
+    if (c) requestPassTo(state, c.lane + dir * steps);
+  },
 });
 
 const STEP = 1 / 60;
@@ -89,4 +100,5 @@ requestAnimationFrame(frame);
     for (let i = 0; i < seconds / STEP; i++) stepDrill(state, STEP);
   },
   pass: (dir: -1 | 1) => requestPass(state, dir),
+  passTo: (lane: number) => requestPassTo(state, lane),
 };

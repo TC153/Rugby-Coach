@@ -14,7 +14,8 @@ Plan: sim (pure TS) → circles renderer with tilted portrait camera → tap inp
 - Milestone 2: rucks and recycling, fatigue, momentum.
 
 ### Decisions for Tom to review
-- Tap left half = pass left, right half = pass right, to the adjacent attacker only (no skip passes).
+- Tap an attacker to pass to him; tapping past a team-mate is a skip pass (longer flight, same forward-pass rule). Tap near the carrier = adjacent on that side. Keys: ← → adjacent, Q/E or Shift+arrow skip.
+- Defenders the ball has got past by 1 m turn and chase at 5.9 m/s (carrier 5.6), so a clean break is not a certain try.
 - Carrier runs straight; he cannot be steered. Wide attackers fan out slightly.
 - Forward pass judged in the passer's frame (catch point vs where his hands will be). Gives scrum to defence, play resets.
 - Defence: man-on-man by lane, cheats 18% towards the ball with 0.4s reading lag; marker charges inside 6.5 m, then is "over-run" and slow to turn if the ball is passed. That is the window to exploit.

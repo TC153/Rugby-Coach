@@ -80,10 +80,16 @@ function resetPlay(s: DrillState) {
  * Returns true if a pass was thrown.
  */
 export function requestPass(s: DrillState, dir: -1 | 1): boolean {
+  const c = carrier(s);
+  if (!c) return false;
+  return requestPassTo(s, c.lane + dir);
+}
+
+/** Pass to any other attacker by lane. Passing over a team-mate is a skip pass. */
+export function requestPassTo(s: DrillState, toLane: number): boolean {
   if (s.phase !== 'live' || s.ball.flight || s.ball.carrierId === null) return false;
   const from = s.players[s.ball.carrierId]!;
-  const toLane = from.lane + dir;
-  if (toLane < 0 || toLane >= C.LANES) return false;
+  if (toLane < 0 || toLane >= C.LANES || toLane === from.lane) return false;
   const to = s.players[toLane]!;
   const sample = ballDur(from, to);
   // Forward is judged in the passer's frame: where the receiver catches it compared
@@ -182,6 +188,18 @@ function stepDefenders(s: DrillState, dt: number) {
       const dy = ty - d.y;
       const len = Math.hypot(dx, dy) || 1;
       accelerate(d, (dx / len) * C.TACKLER_SPEED, (dy / len) * C.TACKLER_SPEED, C.DEF_ACCEL, dt);
+      continue;
+    }
+
+    // Ball (or carrier) has got past this defender: turn and chase it down.
+    const ballY = holder ? holder.y : s.ball.flight ? s.players[s.ball.flight.receiverId]!.y : s.ball.y;
+    if (ballY > d.y + C.BEATEN_MARGIN) {
+      const tgt = holder ?? s.players[s.ball.flight ? s.ball.flight.receiverId : 0]!;
+      const lead = clamp(Math.hypot(tgt.x - d.x, tgt.y - d.y) / C.CHASE_SPEED, 0, 0.8);
+      const dx = tgt.x + tgt.vx * lead - d.x;
+      const dy = tgt.y + tgt.vy * lead - d.y;
+      const len = Math.hypot(dx, dy) || 1;
+      accelerate(d, (dx / len) * C.CHASE_SPEED, (dy / len) * C.CHASE_SPEED, C.DEF_ACCEL, dt);
       continue;
     }
 

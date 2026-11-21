@@ -17,8 +17,7 @@ test('drill loads and draws', async ({ page }, info) => {
 test('tap passes the ball and the defence tackles', async ({ page }, info) => {
   await page.goto('/?seed=7&freeze');
   await page.evaluate(`${g}.advance(1.2)`);
-  const vp = page.viewportSize()!;
-  await page.touchscreen.tap(vp.width * 0.85, vp.height * 0.5);
+  await page.keyboard.press('ArrowRight');
   await page.evaluate(`${g}.advance(0.1)`);
   await page.waitForTimeout(250);
   await page.screenshot({ path: `screenshots/${info.project.name}-2-pass.png` });
@@ -33,4 +32,14 @@ test('tap passes the ball and the defence tackles', async ({ page }, info) => {
   const phase = await page.evaluate(() => (window as unknown as { __game: Game }).__game.state.phase);
   expect(['tackled', 'try', 'live']).toContain(phase);
   await expect(page.locator('#s-tackled')).toBeVisible();
+});
+
+test('tapping an attacker two lanes away throws a skip pass', async ({ page }, info) => {
+  await page.goto('/?seed=7&freeze');
+  await page.evaluate(`${g}.advance(1.0)`);
+  await page.keyboard.press('e');
+  await page.evaluate(`${g}.advance(1.0)`);
+  await page.screenshot({ path: `screenshots/${info.project.name}-4-skip.png` });
+  const carrier = await page.evaluate(() => (window as unknown as { __game: Game }).__game.state.ball.carrierId);
+  expect(carrier).toBe(4);
 });
