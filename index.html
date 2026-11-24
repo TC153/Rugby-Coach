@@ -20,8 +20,25 @@
         pointer-events: none; opacity: .9; }
       .dice { position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 50px); text-align: center;
         font-size: 13px; font-variant-numeric: tabular-nums; opacity: .85; pointer-events: none; text-shadow: 0 1px 2px #000; }
-      .reload { position: absolute; right: 8px; bottom: calc(env(safe-area-inset-bottom) + 40px); font: inherit;
+      .reload { position: absolute; right: 8px; top: calc(env(safe-area-inset-top) + 74px); font: inherit;
         font-size: 12px; color: #fff; background: #0008; border: 1px solid #fff4; border-radius: 14px; padding: 4px 10px; }
+      .ruck-panel { position: absolute; left: 50%; transform: translateX(-50%); width: min(100%, 440px); box-sizing: border-box;
+        bottom: 0; padding: 10px 12px calc(env(safe-area-inset-bottom) + 10px); background: #0b1610ee;
+        border-top: 1px solid #fff3; border-radius: 14px 14px 0 0; z-index: 5; }
+      .ruck-panel[hidden] { display: none; }
+      .rk-head { display: flex; justify-content: space-between; font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+      .rk-bar { position: relative; height: 8px; background: #ffffff22; border-radius: 4px; margin-bottom: 8px; overflow: hidden; }
+      .rk-fill { position: absolute; left: 0; top: 0; bottom: 0; background: #7db8ff; width: 0; }
+      .rk-ready, .rk-fire { position: absolute; top: 0; bottom: 0; width: 3px; left: 0; }
+      .rk-ready { background: #7dff9b; } .rk-fire { background: #ffd36b; }
+      .rk-row { display: flex; align-items: center; gap: 6px; margin: 5px 0; }
+      .rk-label { width: 72px; font-size: 13px; opacity: .8; }
+      .rk-row button { flex: 1; font: inherit; font-size: 14px; font-weight: 600; color: #fff; background: #ffffff18;
+        border: 1px solid #ffffff30; border-radius: 9px; padding: 9px 4px; }
+      .rk-row button.on { background: #2f6bff; border-color: #9fc0ff; }
+      .rk-go { width: 100%; margin-top: 6px; font: inherit; font-size: 17px; font-weight: 800; letter-spacing: 1px;
+        color: #10220f; background: #ffd36b; border: 0; border-radius: 10px; padding: 12px; }
+      .rk-go.called { background: #7dff9b; }
       .banner { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); text-align: center;
         padding: 10px 18px; border-radius: 12px; background: #000b; pointer-events: none; opacity: 0;
         transition: opacity .15s; min-width: 180px; }
@@ -36,14 +53,25 @@
       <canvas id="game"></canvas>
       <div class="hud">
         <span>Tries <b id="s-tries">0</b></span>
-        <span>Tackled <b id="s-tackled">0</b></span>
+        <span>Phase <b id="s-phase">0</b></span>
+        <span>Turnovers <b id="s-turnovers">0</b></span>
         <span>Errors <b id="s-errors">0</b></span>
-        <span>Streak <b id="s-streak">0</b></span>
       </div>
       <div class="dice" id="dice"></div>
       <button class="reload" id="reload" aria-label="Load latest version">↻ <span id="version"></span></button>
       <div class="banner" id="banner"><div class="title"></div><div class="sub"></div></div>
-      <div class="hint" id="hint">Tap an attacker to pass to him · tap past a mate to skip</div>
+      <div class="ruck-panel" id="ruck-panel" hidden>
+        <div class="rk-head"><span id="rk-status">Ruck forming</span><span id="rk-clock">0.0s</span></div>
+        <div class="rk-bar"><div class="rk-fill" id="rk-fill"></div><div class="rk-ready" id="rk-ready"></div><div class="rk-fire" id="rk-fire"></div></div>
+        <div class="rk-row"><span class="rk-label">Clear-out</span>
+          <button data-co="1">1</button><button data-co="2">2</button><button data-co="3">3</button></div>
+        <div class="rk-row"><span class="rk-label">Play</span>
+          <button data-play="pick">Pick &amp; go</button><button data-play="one">1 out</button><button data-play="two">2 out</button></div>
+        <div class="rk-row"><span class="rk-label">Side</span>
+          <button data-side="-1">◀ Left</button><button data-side="1">Right ▶</button></div>
+        <button class="rk-go" id="rk-go">CALL IT</button>
+      </div>
+      <div class="hint" id="hint">Tap a runner to pass · past a mate = skip · red = forward</div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

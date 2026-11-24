@@ -1,5 +1,5 @@
 import * as C from '../sim/constants';
-import { attackers, carrier, defenders } from '../sim/drill';
+import { calledReceiver, carrier, defenders, lineAttackers } from '../sim/drill';
 import type { DrillState, Player } from '../sim/types';
 import { depthScale, project, Y_MAX, Y_MIN, type View } from './camera';
 
@@ -49,15 +49,15 @@ function drawPitch(ctx: CanvasRenderingContext2D, v: View) {
   ctx.fillStyle = COL.outside;
   ctx.fillRect(0, 0, v.w, v.h);
   // Mown stripes every 5 m.
-  for (let y = Y_MIN; y < C.TRY_LINE_Y; y += 5) {
-    const y0 = Math.max(y, Y_MIN);
+  for (let y = Y_MIN - 30; y < C.TRY_LINE_Y; y += 5) {
+    const y0 = y;
     const y1 = Math.min(y + 5, C.TRY_LINE_Y);
-    quad(ctx, v, 0, y0, C.PITCH_W, y1, Math.floor((y - Y_MIN) / 5) % 2 ? COL.grassA : COL.grassB);
+    quad(ctx, v, 0, y0, C.PITCH_W, y1, Math.abs(Math.floor((y - Y_MIN) / 5)) % 2 ? COL.grassA : COL.grassB);
   }
   quad(ctx, v, 0, C.TRY_LINE_Y, C.PITCH_W, C.DEAD_BALL_Y, COL.inGoal);
   // Touchlines.
   for (const x of [0, C.PITCH_W]) {
-    const a = project(v, x, Y_MIN);
+    const a = project(v, x, Y_MIN - 30);
     const b = project(v, x, Y_MAX);
     ctx.strokeStyle = COL.line;
     ctx.lineWidth = 3;
@@ -73,9 +73,30 @@ function drawPitch(ctx: CanvasRenderingContext2D, v: View) {
   hline(ctx, v, C.DEAD_BALL_Y);
 }
 
+function arrow(ctx: CanvasRenderingContext2D, ax: number, ay: number, bx: number, by: number, back: number, col: string, w: number, dash: number[]) {
+  ctx.strokeStyle = col;
+  ctx.lineWidth = w;
+  ctx.setLineDash(dash);
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
+  ctx.lineTo(bx, by);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const ang = Math.atan2(by - ay, bx - ax);
+  const tip = { x: bx - Math.cos(ang) * back, y: by - Math.sin(ang) * back };
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  ctx.moveTo(tip.x, tip.y);
+  ctx.lineTo(tip.x - Math.cos(ang - 0.45) * 12, tip.y - Math.sin(ang - 0.45) * 12);
+  ctx.lineTo(tip.x - Math.cos(ang + 0.45) * 12, tip.y - Math.sin(ang + 0.45) * 12);
+  ctx.closePath();
+  ctx.fill();
+}
+
 function drawPassLine(ctx: CanvasRenderingContext2D, v: View, s: DrillState) {
-  const atts = attackers(s);
-  const pts = atts.map((p) => project(v, p.x, p.y));
+  const line = lineAttackers(s);
+  if (line.length < 2) return;
+  const pts = line.map((p) => project(v, p.x, p.y));
   // The whole line through the attackers.
   ctx.strokeStyle = 'rgba(255,255,255,0.35)';
   ctx.lineWidth = 2;
@@ -85,36 +106,65 @@ function drawPassLine(ctx: CanvasRenderingContext2D, v: View, s: DrillState) {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Highlight the links the carrier can pass along.
+  // Arrows to everyone the carrier can pass to. Red: in front of him, it would be forward.
   const holder = carrier(s);
-  if (!holder || s.ball.flight || s.phase !== 'live') return;
-  for (let lane = 0; lane < C.LANES; lane++) {
-    if (lane === holder.lane) continue;
-    const skip = Math.abs(lane - holder.lane) > 1;
-    const a = pts[holder.lane]!;
-    const b = pts[lane]!;
-    const col = skip ? 'rgba(255,227,107,0.55)' : '#ffe36b';
+  if (!holder || s.ball.flight || s.phase !== 'live' || holder.lane < 0) return;
+  const a = pts[holder.lane]!;
+  for (const r of line) {
+    if (r.id === holder.id) continue;
+    const skip = Math.abs(r.lane - holder.lane) > 1;
+    const ahead = r.y > holder.y + C.AHEAD_TOLERANCE;
+    const b = pts[r.lane]!;
+    const col = ahead ? 'rgba(255,107,94,0.7)' : skip ? 'rgba(255,227,107,0.55)' : '#ffe36b';
+    const back = C.PLAYER_R * 1.2 * v.scale * depthScale(r.y) + 6;
+    arrow(ctx, a.x, a.y, b.x, b.y, back, col, skip ? 2.5 : 3.5, skip || ahead ? [3, 6] : []);
+  }
+}
+
+/** Ruck: the pile, offside lines, where runners should stand and the called pass. */
+function drawRuck(ctx: CanvasRenderingContext2D, v: View, s: DrillState) {
+  const r = s.ruck;
+  if (!r || s.phase !== 'ruck') return;
+  // Offside lines: hindmost feet each side.
+  for (const [y, col] of [[r.y - 1.2, 'rgba(125,184,255,0.7)'], [r.y + C.DEF_OFFSIDE, 'rgba(255,138,125,0.7)']] as const) {
+    const a = project(v, r.x - 30, y);
+    const b = project(v, r.x + 30, y);
     ctx.strokeStyle = col;
-    ctx.lineWidth = skip ? 2.5 : 3.5;
-    ctx.setLineDash(skip ? [3, 6] : []);
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 8]);
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
     ctx.stroke();
     ctx.setLineDash([]);
-    // Arrow head at the receiver end.
-    const ang = Math.atan2(b.y - a.y, b.x - a.x);
-    const r = atts[lane]!;
-    const rr = C.PLAYER_R * 1.2 * v.scale * depthScale(r.y) + 6;
-    const tip = { x: b.x - Math.cos(ang) * rr, y: b.y - Math.sin(ang) * rr };
-    ctx.fillStyle = col;
-    ctx.beginPath();
-    ctx.moveTo(tip.x, tip.y);
-    ctx.lineTo(tip.x - Math.cos(ang - 0.45) * 12, tip.y - Math.sin(ang - 0.45) * 12);
-    ctx.lineTo(tip.x - Math.cos(ang + 0.45) * 12, tip.y - Math.sin(ang + 0.45) * 12);
-    ctx.closePath();
-    ctx.fill();
   }
+  // The pile.
+  const c = project(v, r.x, r.y);
+  const rad = 2.4 * v.scale * c.k;
+  ctx.fillStyle = 'rgba(90,60,30,0.45)';
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y, rad, rad * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Slot markers: green when the runner is set.
+  for (const p of s.players) {
+    if (p.team !== 'att' || p.job !== 'line') continue;
+    const sp = project(v, p.slotX, p.slotY);
+    const set = Math.hypot(p.slotX - p.x, p.slotY - p.y) < C.SET_DIST;
+    ctx.strokeStyle = set ? '#7dff9b' : 'rgba(255,211,107,0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(sp.x, sp.y, 0.9 * v.scale * sp.k, 0.45 * v.scale * sp.k, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Called pass from the half.
+  const half = s.players[r.halfId]!;
+  const target = calledReceiver(s, r.halfId, r.play, r.side, r.x);
+  if (!target) return;
+  const h = project(v, half.x, half.y);
+  const t = project(v, target.slotX, target.slotY);
+  arrow(ctx, h.x, h.y, t.x, t.y, 8, 'rgba(255,227,107,0.85)', 3, [8, 6]);
 }
 
 function drawPlayer(ctx: CanvasRenderingContext2D, v: View, p: Player, isCarrier: boolean, s: DrillState) {
@@ -122,6 +172,7 @@ function drawPlayer(ctx: CanvasRenderingContext2D, v: View, p: Player, isCarrier
   const r = C.PLAYER_R * 1.2 * v.scale * pr.k;
   const att = p.team === 'att';
   const down = p.state === 'down';
+  const inRuck = p.job === 'ruck' && !down;
   const beaten = p.state === 'beaten';
 
   // Shadow.
@@ -130,7 +181,7 @@ function drawPlayer(ctx: CanvasRenderingContext2D, v: View, p: Player, isCarrier
   ctx.ellipse(pr.x, pr.y + r * 0.55, r * 1.05, r * 0.45, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.globalAlpha = down || beaten ? 0.55 : 1;
+  ctx.globalAlpha = down || beaten ? 0.55 : inRuck ? 0.8 : 1;
   if (down) {
     // Lying on the ground: a squashed circle.
     ctx.fillStyle = att ? COL.att : COL.def;
@@ -207,6 +258,7 @@ function drawTimingRing(ctx: CanvasRenderingContext2D, v: View, s: DrillState) {
 
 export function drawDrill(ctx: CanvasRenderingContext2D, v: View, s: DrillState) {
   drawPitch(ctx, v);
+  drawRuck(ctx, v, s);
   drawPassLine(ctx, v, s);
   drawTimingRing(ctx, v, s);
   const holder = carrier(s);

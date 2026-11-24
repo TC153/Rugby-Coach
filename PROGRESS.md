@@ -1,32 +1,48 @@
 # Progress
 
-## Milestone 1: 5-a-side attack drill — built
-Plan: sim (pure TS) → circles renderer with tilted portrait camera → tap input → tests → Pages deploy.
+## Milestone 1: 5-a-side attack drill — done
+Passing drill with tilted portrait camera, tap to pass, defence and 3d6 tackles. Deployed to GitHub Pages.
+
+## Milestone 2 (with a first slice of 3): rucks and calling plays off them — built
+Tom's brief: rugby is creating space by pulling defenders in. After a tackle, call the clear-out
+count and the play while the ruck forms in slow motion; more defenders in the ruck means slower
+ball but more space; quick ball means neither side is set.
+
+### Plan (done)
+1. 8 v 8 drill that opens on a ruck near our 22. Phases continue until try, turnover or error.
+2. Ruck model: defence commits 0-2, attack sends 1-3 cleaners, jackal if a defender gets there first, 3d6 contest.
+3. Ruck clock (real seconds; world runs at half speed). Ball out at max(ready time, your call); no call = 6 s.
+4. Both sides reposition during the ruck: runners to slots on the called side, defence to guards + marks.
+5. Ball out: half passes to 1st / 2nd runner or picks and goes. Runners not set = harder catch (and can be forward).
+6. Call panel UI, offside lines, slot markers, camera follows the ball.
 
 ### What works
-- `src/sim/`: seeded RNG, 5 attackers vs 5 defenders, passing chain, defence (line, slide, tackler, over-run, beaten), 3d6 tackles, try / forward pass / touch, auto reset. Headless Vitest tests incl. balance check.
-- `src/render/`: tilted camera (far players smaller/higher), pitch, pass line through attackers, timing ring, circles, ball arc.
-- `src/ui/`: HUD (tries, tackled, forward, streak), banner with dice, input (tap left/right half, ← → / A D).
-- Playwright screenshots in portrait and landscape.
-- GitHub Pages workflow on push to `main`.
-
-### Next
-- Idea from Tom: a touch rugby mode (touch instead of tackle, six touches, rollball, defence back 5 m). Fits this engine well; not started, waiting for go-ahead.
-- Milestone 2: rucks and recycling, fatigue, momentum.
+- `src/sim/`: phases, ruck state machine, contest dice, ready/fire timing, repositioning, marks after the ball
+  comes out (fewer defenders in the line = unmarked runners), plus everything from milestone 1
+  (pass/catch/intercept/tackle dice, forward pass, chasing defenders).
+- `src/ui/ruckPanel.ts`: clear-out 1/2/3, play Pick & go / 1 out / 2 out, side, CALL IT, clock bar with
+  ready (green) and fire (yellow) markers.
+- HUD: tries, phase, turnovers, errors. Dice line shows every roll.
+- 28 Vitest tests incl. timing rules, jackal/turnover, quick vs slow ball effects, balance; Playwright screenshots.
 
 ### Decisions for Tom to review
-- Tap an attacker to pass to him; tapping past a team-mate is a skip pass (longer flight, same forward-pass rule). Tap near the carrier = adjacent on that side. Keys: ← → adjacent, Q/E or Shift+arrow skip.
-- Defenders the ball has got past by 1 m turn and chase at 5.9 m/s (carrier 5.6), so a clean break is not a certain try.
-- Carrier runs straight; he cannot be steered. Wide attackers fan out slightly.
-- Forward pass if the receiver is in front of the passer when it is thrown (>0.3 m), or the ball goes forward relative to the passer's running frame. Play resets.
-- Defence: man-on-man by lane, cheats 18% towards the ball with 0.4s reading lag; marker charges inside 6.5 m, then is "over-run" and slow to turn if the ball is passed. That is the window to exploit.
-- Tackle: 3d6 (+1 front on) must reach 7; otherwise carrier breaks and defender is beaten for 1.3s.
-- Balance (bots): never passing ≈ 5% tries; passing once tackler commits ≈ 18%.
-- Handling (all 3d6, shown on screen):
-  - Pass roll at release, minus 1 per team-mate skipped, minus 2 if hurried (defender within 2.2 m): 4 or less = missed pass (ball on floor), 5-7 = poor pass (+2 catch difficulty).
-  - Catch roll: need 5, +1 per skip, +2 poor pass, +1 hurried, +2 if a defender is within 2.5 m of the receiver. Fail = knock-on.
-  - Intercept: each defender who gets within 1.1 m of the ball in flight rolls once; 14+ picks it off.
-  - Bot balance over 400 plays: 15% tries, 70% tackled, 12% knock-on, 3% missed pass.
-- Errors counter = forward passes + knock-ons + missed passes + intercepts.
-- Resets after tackle, try, forward pass, touch. Stats persist.
-- `CLAUDE (1).md` has a stray " (1)" in its name; Claude Code only auto-loads `CLAUDE.md`. Not renamed.
+- 8 v 8 (5 v 5 had no room to manipulate). Defence commits 0-2 to a ruck: the nearest defender within 5 m
+  goes in 85% of the time, a second 50%.
+- Scrum-half is the nearest support player when the tackle is made; cleaners are the next nearest.
+- Clear-out can be changed until the contest settles (everyone committed arrived, or 5 s on the clock).
+- Contest: keep the ball if 3d6 + 2 x (cleaners - defenders) - 3 (jackal) reaches 7. No defender in = no roll.
+- Ready time = when contest settled + 0.9 s + 1.1 s per defender + 1.0 s jackal - 0.35 s per spare cleaner,
+  kept between 2.5 s and 6 s.
+- Ruck clock is real seconds; players move at half speed during the ruck (the slow-mo).
+- Runners not within 1.6 m of their slot when the ball comes out catch at +2 difficulty.
+- Default side is the open (wider) side. Defaults reset every ruck: 2 clear-out, 1 out.
+- Bot balance (calls instantly, passes when a defender commits): clear-out 1 ≈ 25% tries / 28% turnovers /
+  1.6 phases; clear-out 3 ≈ 7% tries / 13% turnovers / 4.5 phases.
+
+### Open questions
+- Should your last call become the default for the next ruck?
+- Defence ruck policy (how often they compete) could become a setting for the opposition.
+- More plays: crash ball, wrap-around, pods of forwards. That is milestone 3 proper.
+
+### Ideas
+- Touch rugby mode (touch instead of tackle, six touches, rollball, defence back 5 m). Not started.

@@ -1,6 +1,7 @@
 import { makeView, PITCH_W, type View } from './render/camera';
 import { drawDrill } from './render/draw';
-import { carrier, createDrill, drainEvents, requestPass, requestPassTo, stepDrill } from './sim/drill';
+import { callPlay, carrier, createDrill, drainEvents, lineAttackers, requestPass, requestPassTo, setClearOut, setPlay, setSide, stepDrill } from './sim/drill';
+import { RuckPanel } from './ui/ruckPanel';
 import { project } from './render/camera';
 import { pickTarget } from './ui/pick';
 import { Hud } from './ui/hud';
@@ -14,9 +15,11 @@ const hud = new Hud();
 const params = new URLSearchParams(location.search);
 const seed = Number(params.get('seed')) || (Date.now() & 0xffffff);
 const state = createDrill(seed);
+const ruckPanel = new RuckPanel(state);
 
 let view: View | undefined;
 let camX = PITCH_W / 2;
+let offY = 0;
 
 let sizeKey = '';
 
@@ -62,7 +65,8 @@ bindInput(canvas, {
   onTap(x) {
     const c = carrier(state);
     if (!c || !view) return;
-    const xs = state.players.filter((p) => p.team === 'att').map((p) => project(view!, p.x, p.y).x);
+    if (c.lane < 0) return;
+    const xs = lineAttackers(state).map((p) => project(view!, p.x, p.y).x);
     requestPassTo(state, pickTarget(xs, c.lane, x));
   },
   onKey(dir, steps) {
@@ -93,12 +97,20 @@ function frame(nowMs: number) {
   }
   for (const e of drainEvents(state)) hud.show(e, nowMs);
   hud.update(state, nowMs);
+  ruckPanel.update();
 
   // Camera follows the ball sideways, staying inside the pitch.
   const half = (view.w / (view.scale * 2)) * 0.98;
   const target = Math.min(Math.max(state.ball.x, half), PITCH_W - half);
   camX += (target - camX) * Math.min(1, dt * 4);
   view.camX = camX;
+  // And up/down: keep the ball around the middle, higher while the ruck panel is up.
+  view.offY = 0;
+  const ballSy = project(view, state.ball.x, state.ball.y).y;
+  const want = view.h * (state.phase === 'ruck' ? 0.36 : 0.55);
+  const targetOff = Math.min(0, want - ballSy);
+  offY += (targetOff - offY) * Math.min(1, dt * 3);
+  view.offY = offY;
   drawDrill(ctx, view, state);
   requestAnimationFrame(frame);
 }
@@ -112,4 +124,8 @@ requestAnimationFrame(frame);
   },
   pass: (dir: -1 | 1) => requestPass(state, dir),
   passTo: (lane: number) => requestPassTo(state, lane),
+  clearOut: (n: number) => setClearOut(state, n),
+  play: (p: 'pick' | 'one' | 'two') => setPlay(state, p),
+  side: (d: -1 | 1) => setSide(state, d),
+  call: () => callPlay(state),
 };

@@ -16,6 +16,8 @@ export interface View {
   /** Screen y of the near edge (Y_MIN). */
   baseY: number;
   camX: number;
+  /** Pixels the pitch is shifted down the screen (negative: up), to keep the ball in view. */
+  offY: number;
 }
 
 export interface Projected {
@@ -58,14 +60,14 @@ export function makeView(w: number, h: number, top: number, bottom: number): Vie
   // If the stretch had to be capped, shrink scale so the whole depth still fits.
   if (gMax * scale * vStretch > availH) scale = availH / (gMax * vStretch);
   const baseY = h - bottom - (availH - gMax * scale * vStretch);
-  return { w, h, scale, vStretch, baseY, camX: PITCH_W / 2 };
+  return { w, h, scale, vStretch, baseY, camX: PITCH_W / 2, offY: 0 };
 }
 
 export function project(v: View, x: number, y: number): Projected {
   const k = depthScale(y);
   return {
     x: v.w / 2 + (x - v.camX) * v.scale * k,
-    y: v.baseY - ground(y) * v.scale * v.vStretch,
+    y: v.baseY + v.offY - ground(y) * v.scale * v.vStretch,
     k,
   };
 }
