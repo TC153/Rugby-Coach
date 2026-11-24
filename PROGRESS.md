@@ -23,7 +23,7 @@ ball but more space; quick ball means neither side is set.
 - `src/ui/ruckPanel.ts`: clear-out 1/2/3, play Pick & go / 1 out / 2 out, side, CALL IT, clock bar with
   ready (green) and fire (yellow) markers.
 - HUD: tries, phase, turnovers, errors. Dice line shows every roll.
-- 28 Vitest tests incl. timing rules, jackal/turnover, quick vs slow ball effects, balance; Playwright screenshots.
+- 27 Vitest tests incl. timing rules, jackal/turnover, quick vs slow ball effects, balance; Playwright screenshots.
 
 ### Decisions for Tom to review
 - 8 v 8 (5 v 5 had no room to manipulate). Defence commits 0-2 to a ruck: the nearest defender within 5 m
